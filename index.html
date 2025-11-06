@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -52,7 +51,7 @@
         <textarea id="userInput" placeholder="E.g., The president gets sick during a crisis... or leave blank for random." rows="3"></textarea>
         <small><em>💡 Tap mic on mobile for voice input.</em></small>
 
-        <button id="hintBtn" onclick="getAIHint()" style="background: #28a745; margin: 10px 0;">🤖 Get AI Hint/Example (Optional)</button>
+        <button id="hintBtn" onclick="getAIHint()">🤖 Get AI Hint/Example (Optional)</button>
         <div id="hint"></div>
 
         <button onclick="generateStarter()">Get Starter Scenario</button>
@@ -72,43 +71,143 @@
     <button id="exportBtn" onclick="exportScenario()" style="display: none; width: auto;">📋 Copy to Share/Perform</button>
 
     <script>
-        // AI Load (same as before)
+        console.log("Script loading...");
+
+        // AI Load
         let generator = null;
         function loadTransformers() {
             return new Promise((resolve) => {
-                if (generator) return resolve(true);
+                if (generator) {
+                    console.log("AI already loaded.");
+                    return resolve(true);
+                }
+                console.log("Loading Transformers.js...");
                 const script = document.createElement("script");
                 script.src = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
                 script.onload = async () => {
                     try {
+                        console.log("Initializing pipeline...");
                         generator = await Transformers.pipeline("text-generation", "Xenova/distilgpt2");
+                        console.log("AI ready!");
                         resolve(true);
                     } catch (e) {
+                        console.error("Pipeline error:", e);
                         resolve(false);
                     }
                 };
-                script.onerror = () => resolve(false);
+                script.onerror = () => {
+                    console.error("Script load failed.");
+                    resolve(false);
+                };
                 document.head.appendChild(script);
             });
         }
 
-        // Templates & Data (unchanged from last)
-        const templates = { /* ... same as previous version ... */ }; // Omitted for brevity—copy from last code
+        // Full Templates
+        const templates = {
+            "22nd": {
+                "paragraph": ["President {name} announces a third-term run, ignoring term limits. Supporters rally, but the Supreme Court cites the 22nd Amendment, forcing a new candidate. Chaos ensues as democracy holds firm! Your twist: {user}."],
+                "skit": ["President {name}: \"I am running again—America needs me!\" Advisor: \"Sir, the 22nd Amendment says no after two terms!\" {name}: \"Nonsense!\" [Crowd boos] Court: \"Case dismissed—term limits enforced.\" End scene. Your line: {user}"],
+                "comic": ["Panel 1: {name} on podium, \"Third term!\" 😎 Panel 2: Advisor whispers, \"22nd Amendment blocks it\" ⚠️ Panel 3: Judges rule thumbs down 👎. Your panel: {user}"]
+            },
+            "25th": {
+                "paragraph": ["During a crisis, President {name} falls ill and can not decide. The VP invokes the 25th Amendment, stepping in with cabinet approval. Leadership continues smoothly. Your addition: {user}."],
+                "skit": ["{name}: \"I can not focus.\" VP: \"We must use the 25th—Section 4 for disability.\" Cabinet: \"Agreed!\" [VP takes oath] {name}: \"Thanks, buddy.\" Your dialogue: {user}"],
+                "comic": ["Panel 1: {name} dizzy in Oval Office 😵 Panel 2: VP & cabinet vote \"25th invoke!\" 📜 Panel 3: VP at desk, thumbs up 👍. Your panel: {user}"]
+            },
+            "pendleton": {
+                "paragraph": ["Fed boss {name} hires a buddy over qualified applicants, sparking outrage. The Pendleton Act demands merit-based picks, so an investigation restores fairness. Your story: {user}."],
+                "skit": ["Boss {name}: \"You are hired—family first!\" Employee: \"That breaks Pendleton Act—merit only!\" Inspector: \"Audit time!\" {name}: \"Oops.\" Resolution: Fair hires. Your bit: {user}"],
+                "comic": ["Panel 1: {name} shakes hands with pal 😏 Panel 2: \"Pendleton violation!\" 🚨 Panel 3: Merit test passes, high-fives 🎉. Your panel: {user}"]
+            },
+            "hatch": {
+                "paragraph": ["Gov worker {name} campaigns on work time, posting ads. Colleagues report it—Hatch Act bans on-duty politicking, leading to a warning and neutrality training. Your angle: {user}."],
+                "skit": ["{name}: \"Vote for my candidate—right from my desk!\" Colleague: \"Hatch Act says no politics at work!\" HR: \"Suspended for neutrality breach.\" {name}: \"Lesson learned.\" Your line: {user}"],
+                "comic": ["Panel 1: {name} typing rally post 💻 Panel 2: \"Hatch Act alert!\" 📢 Panel 3: Training session, lightbulb 💡. Your panel: {user}"]
+            }
+        };
         const names = ["Alex Rivera", "Jordan Lee", "Taylor Kim", "Casey Patel", "Morgan Quinn"];
-        const explanations = { /* ... same ... */ };
+        const explanations = {
+            "22nd": "The 22nd Amendment limits presidents to two terms to prevent power grabs, ensuring turnover.",
+            "25th": "The 25th Amendment handles presidential inability, allowing VP/cabinet to act for stability.",
+            "pendleton": "Pendleton Act mandates merit hiring in civil service to end corruption and favoritism.",
+            "hatch": "Hatch Act restricts federal workers political activities on duty for government neutrality."
+        };
 
-        let currentTopic = "", currentFormat = "paragraph", currentScenario = "", guideStep = 0, guideAnswers = [];
+        let currentTopic = "", currentFormat = "paragraph", currentScenario = "", guideStep = 0, guideAnswers = [], guideQuestions = [];
 
-        // DOM Ready (same)
-        document.addEventListener("DOMContentLoaded", function() { /* ... same tooltip/format setup ... */ });
+        document.addEventListener("DOMContentLoaded", function() {
+            console.log("DOM ready!");
+            document.querySelectorAll("[data-tip]").forEach(function(el) {
+                el.innerHTML += "<span class=\"tooltiptext\">" + el.dataset.tip + "</span>";
+            });
+            document.querySelectorAll("input[name=\"format\"]").forEach(function(radio) {
+                radio.addEventListener("change", function(e) {
+                    const input = document.getElementById("userInput");
+                    if (e.target.value === "comic") input.placeholder = "E.g., Panel 1: The prez collapses...";
+                    else if (e.target.value === "skit") input.placeholder = "E.g., President: I feel dizzy... VP: We need to invoke...";
+                    else input.placeholder = "E.g., The president gets sick during a crisis...";
+                });
+            });
+            // Auto-test sample on load
+            document.getElementById("topic").value = "25th";
+            document.getElementById("userInput").value = "The president gets sick during a crisis...";
+            console.log("Auto-set sample for test.");
+        });
 
-        // AI Hint (same as before)
-        async function getAIHint() { /* ... same ... */ }
+        async function getAIHint() {
+            console.log("Hint button clicked!");
+            const hintDiv = document.getElementById("hint");
+            const btn = document.getElementById("hintBtn");
+            btn.disabled = true;
+            btn.textContent = "Loading AI Hint...";
+            hintDiv.innerHTML = "<div class=\"loading\">🤖 Fetching guidance (first time ~20s)...</div>";
 
-        function generateStarter() { /* ... same ... */ }
+            const aiLoaded = await loadTransformers();
+            currentTopic = document.getElementById("topic").value || "22nd";
+            const userIdea = document.getElementById("userInput").value || "";
+            const format = document.querySelector("input[name=\"format\"]:checked").value || "paragraph";
 
-        // New: Guided Build Mode
+            try {
+                if (aiLoaded && generator) {
+                    const prompt = `Give a short example scenario for the ${currentTopic === "22nd" ? "22nd Amendment" : currentTopic === "25th" ? "25th Amendment" : currentTopic.toUpperCase() + " Act"} in ${format} format. Start with: "${userIdea}". Keep it realistic, creative, and under 100 words. End with why the law applies.`;
+                    const output = await generator(prompt, { max_new_tokens: 50, temperature: 0.8, do_sample: true });
+                    const hintText = output[0].generated_text.replace(prompt, "").trim();
+                    hintDiv.innerHTML = "<div class=\"ai-hint\"><strong>AI Guidance Example:</strong><br>" + hintText + "</div>";
+                    console.log("✅ AI hint generated!");
+                } else {
+                    const name = names[Math.floor(Math.random() * names.length)];
+                    const fallback = templates[currentTopic][format][0].replace("{name}", name).replace("{user}", userIdea ? "Incorporating: " + userIdea + ". " : "");
+                    hintDiv.innerHTML = "<div class=\"randomizer\"><strong>Quick Hint Example:</strong><br>" + fallback.substring(0, 150) + "... (Edit to fit!)</div>";
+                }
+            } catch (err) {
+                console.error("AI hint error:", err);
+                hintDiv.innerHTML = "<div class=\"error\">AI hint unavailable—use the starter below. Tip: For 25th, try VP stepping in during illness!</div>";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "🤖 Get AI Hint/Example (Optional)";
+            }
+        }
+
+        function generateStarter() {
+            console.log("Starter button clicked!");
+            currentTopic = document.getElementById("topic").value;
+            currentFormat = document.querySelector("input[name=\"format\"]:checked").value;
+            if (!currentTopic) return alert("Pick a law first!");
+
+            const userIdea = document.getElementById("userInput").value || "";
+            const name = names[Math.floor(Math.random() * names.length)];
+            const template = templates[currentTopic][currentFormat][0];
+            currentScenario = template.replace("{name}", name).replace("{user}", userIdea ? "Incorporating: " + userIdea + ". " : "");
+
+            document.getElementById("starter").innerHTML = "<div class=\"randomizer\"><strong>Generated Starter:</strong><br>" + currentScenario + "</div>";
+            document.getElementById("wizard").style.display = "none";
+            document.getElementById("builder").style.display = "block";
+            console.log("Starter generated!");
+        }
+
         async function startGuidedBuild() {
+            console.log("Guide button clicked!");
             const guideDiv = document.getElementById("guide");
             guideDiv.innerHTML = "<div class=\"loading\">🛤️ Starting your guide—let's build together!</div>";
             guideStep = 0;
@@ -116,15 +215,16 @@
             updateProgress(0);
 
             const aiLoaded = await loadTransformers();
-            const numSteps = currentFormat === "comic" ? 6 : currentFormat === "skit" ? 7 : 5; // Tailored lengths
+            const numSteps = currentFormat === "comic" ? 6 : currentFormat === "skit" ? 7 : 5;
 
+            let questions;
             if (aiLoaded && generator) {
                 const prompt = `For a ${currentFormat} scenario on ${currentTopic === "22nd" ? "22nd Amendment" : currentTopic === "25th" ? "25th Amendment" : currentTopic.toUpperCase() + " Act"}, based on starter "${currentScenario}". Generate ${numSteps} simple guiding questions to build logically step-by-step. Each question should prompt one small idea (e.g., 'What does Character 1 say next?'), not write content. Focus on logical flow: setup, conflict, law role, resolution. Keep questions encouraging and short.`;
                 const output = await generator(prompt, { max_new_tokens: 120, temperature: 0.6, do_sample: true });
-                const questions = output[0].generated_text.replace(prompt, "").trim().split("\n").filter(q => q.trim());
-                guideQuestions = questions.slice(0, numSteps); // Limit to plan
+                questions = output[0].generated_text.replace(prompt, "").trim().split("\n").filter(q => q.trim());
+                guideQuestions = questions.slice(0, numSteps);
+                console.log("AI questions generated:", guideQuestions);
             } else {
-                // Fallback questions (logical chains)
                 guideQuestions = currentFormat === "paragraph" ? [
                     "What starts the story? (E.g., Who is involved?)",
                     "What problem comes up with the law?",
@@ -147,6 +247,7 @@
                     "Panel 5: What does the law decide?",
                     "Panel 6: How does it end? (Smile or think bubble)"
                 ];
+                console.log("Fallback questions used.");
             }
 
             nextGuideStep();
@@ -154,11 +255,11 @@
 
         function nextGuideStep() {
             if (guideStep >= guideQuestions.length) {
-                // Assemble answers into refine box
                 const assembled = guideAnswers.join("\n\n");
                 document.getElementById("refineInput").value = assembled;
                 document.getElementById("guide").innerHTML = "<div class=\"guide-step\"><strong>Great job! Your ideas:</strong><br>" + assembled + "<br><small>Edit if you want, then hit Finalize.</small></div>";
                 updateProgress(100);
+                console.log("Guide complete!");
                 return;
             }
 
@@ -170,6 +271,7 @@
                 <small><em>Think: What makes sense next?</em></small>
             `;
             updateProgress(((guideStep / guideQuestions.length) * 100));
+            console.log("Guide step", guideStep + 1, "shown.");
         }
 
         function submitGuideAnswer() {
@@ -178,6 +280,7 @@
             guideAnswers.push(`Step ${guideStep + 1}: ${answer}`);
             guideStep++;
             nextGuideStep();
+            console.log("Answer submitted for step", guideStep);
         }
 
         function updateProgress(percent) {
@@ -185,6 +288,7 @@
         }
 
         function refineScenario() {
+            console.log("Finalize clicked!");
             const refine = document.getElementById("refineInput").value;
             if (!refine) return alert("Add your idea to refine!");
 
@@ -194,11 +298,14 @@
             document.getElementById("builder").style.display = "none";
             document.getElementById("output").style.display = "block";
             document.getElementById("exportBtn").style.display = "inline-block";
+            console.log("Scenario finalized!");
         }
 
         function exportScenario() {
+            console.log("Export clicked!");
             navigator.clipboard.writeText(currentScenario).then(function() { alert("Copied! Paste for class skit, print for comic, or share."); });
         }
     </script>
 </body>
 </html>
+
