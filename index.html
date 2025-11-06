@@ -18,7 +18,7 @@
         .tooltip .tooltiptext { visibility: hidden; width: 200px; background: #555; color: #fff; text-align: center; padding: 5px; border-radius: 6px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.3s; }
         .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
         .format-desc { font-style: italic; color: #666; }
-        .randomizer, .ai-hint { background: #d4edda; padding: 10px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #28a745; }
+        .randomizer, .ai-hint, .ai-polish { background: #d4edda; padding: 10px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #28a745; }
         .loading { color: #007bff; font-style: italic; }
         .error { color: red; background: #ffe6e6; border-left: 4px solid red; }
     </style>
@@ -57,6 +57,8 @@
 
     <div id="builder" class="step" style="display: none;">
         <label>Step 4: Refine (add your twist!)</label>
+        <button id="polishBtn" onclick="getAIPolish()" style="background: #28a745; margin: 10px 0;">🤖 Get AI Polish Suggestion (Expand It!)</button>
+        <div id="polish"></div>
         <textarea id="refineInput" placeholder="What happens next? Why does the law apply? (E.g., Add a funny protest or Explain the VPs role)" rows="4"></textarea>
         <button onclick="refineScenario()">Polish & Finalize</button>
     </div>
@@ -140,7 +142,7 @@
             hintDiv.innerHTML = "<div class=\"loading\">🤖 Fetching guidance (first time ~20s)...</div>";
 
             const aiLoaded = await loadTransformers();
-            currentTopic = document.getElementById("topic").value || "22nd"; // Default if none
+            currentTopic = document.getElementById("topic").value || "22nd";
             const userIdea = document.getElementById("userInput").value || "";
             const format = document.querySelector("input[name=\"format\"]:checked").value || "paragraph";
 
@@ -152,7 +154,6 @@
                     hintDiv.innerHTML = "<div class=\"ai-hint\"><strong>AI Guidance Example:</strong><br>" + hintText + "</div>";
                     console.log("✅ AI hint generated!");
                 } else {
-                    // Fallback hint from templates
                     const name = names[Math.floor(Math.random() * names.length)];
                     const fallback = templates[currentTopic][format][0].replace("{name}", name).replace("{user}", userIdea ? "Incorporating: " + userIdea + ". " : "");
                     hintDiv.innerHTML = "<div class=\"randomizer\"><strong>Quick Hint Example:</strong><br>" + fallback.substring(0, 150) + "... (Edit to fit!)</div>";
@@ -163,6 +164,48 @@
             } finally {
                 btn.disabled = false;
                 btn.textContent = "🤖 Get AI Hint/Example (Optional)";
+            }
+        }
+
+        async function getAIPolish() {
+            const polishDiv = document.getElementById("polish");
+            const btn = document.getElementById("polishBtn");
+            const refineInput = document.getElementById("refineInput");
+            btn.disabled = true;
+            btn.textContent = "Loading AI Polish...";
+            polishDiv.innerHTML = "<div class=\"loading\">🤖 Expanding your scenario (20s)...</div>";
+
+            const aiLoaded = await loadTransformers();
+            const refine = refineInput.value || "Add more details for engagement.";
+            try {
+                if (aiLoaded && generator) {
+                    let lengthPrompt = "";
+                    if (currentFormat === "paragraph") lengthPrompt = "Expand to 5-10 full sentences.";
+                    else if (currentFormat === "skit") lengthPrompt = "Expand to 5-8 dialogue exchanges with stage directions (30s-1min perform).";
+                    else if (currentFormat === "comic") lengthPrompt = "Expand to at least 5 detailed panels with descriptions and emojis.";
+
+                    const prompt = `Expand this ${currentFormat} scenario about the ${currentTopic === "22nd" ? "22nd Amendment" : currentTopic === "25th" ? "25th Amendment" : currentTopic.toUpperCase() + " Act"}: "${currentScenario}". User twist: "${refine}". ${lengthPrompt} Keep realistic, creative, accurate. End with why the law applies.`;
+                    const output = await generator(prompt, { max_new_tokens: 100, temperature: 0.7, do_sample: true });
+                    const polishText = output[0].generated_text.replace(prompt, "").trim();
+                    polishDiv.innerHTML = "<div class=\"ai-polish\"><strong>AI Polish Suggestion:</strong><br>" + polishText + "<br><small>(Copy/edit into the box below!)</small></div>";
+                    refineInput.value = polishText; // Auto-fill for ease
+                    console.log("✅ AI polish generated!");
+                } else {
+                    // Fallback expansion
+                    const name = names[Math.floor(Math.random() * names.length)];
+                    let expanded = currentScenario.replace("{name}", name) + " [Expanded: " + refine + ". More drama unfolds as the law kicks in—debate rages, resolution follows.] **Why It Applies:** " + explanations[currentTopic];
+                    if (currentFormat === "comic") expanded += "\nPanel 4: Twist reaction 😲 Panel 5: Law wins! 🎉";
+                    else if (currentFormat === "skit") expanded += "\n[New exchange: Character A: 'But why?' Character B: 'The law protects us!']";
+                    else expanded += " Sentence 4: Tension builds. Sentence 5: Law intervenes wisely.";
+                    polishDiv.innerHTML = "<div class=\"randomizer\"><strong>Quick Polish Expansion:</strong><br>" + expanded + "<br><small>(Tweak as needed!)</small></div>";
+                    refineInput.value = expanded;
+                }
+            } catch (err) {
+                console.error("AI polish error:", err);
+                polishDiv.innerHTML = "<div class=\"error\">AI polish unavailable—try manual tweaks. Example: Add 2-3 exchanges for skits!</div>";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "🤖 Get AI Polish Suggestion (Expand It!)";
             }
         }
 
