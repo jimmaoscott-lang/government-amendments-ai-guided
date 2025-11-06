@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gov Scenario Builder: Amendments Activity</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f4; }
+        h1 { color: #333; text-align: center; }
+        .step { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        label { display: block; margin: 10px 0 5px; font-weight: bold; }
+        select, input[type="radio"], textarea, button { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background: #007bff; color: white; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: wait; }
+        #output, #starter, #hint { white-space: pre-wrap; background: #e9ecef; padding: 15px; border-left: 4px solid #007bff; margin: 10px 0; }
+        .tooltip { position: relative; display: inline-block; border-bottom: 1px dotted #000; cursor: help; }
+        .tooltip .tooltiptext { visibility: hidden; width: 200px; background: #555; color: #fff; text-align: center; padding: 5px; border-radius: 6px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.3s; }
+        .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+        .format-desc { font-style: italic; color: #666; }
+        .randomizer, .ai-hint { background: #d4edda; padding: 10px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #28a745; }
+        .loading { color: #007bff; font-style: italic; }
+        .error { color: red; background: #ffe6e6; border-left: 4px solid red; }
+    </style>
+</head>
+<body>
+    <h1>🎭 Gov Scenario Builder</h1>
+    <p style="text-align: center; color: #666;">Create your own scenario for the 22nd Amendment, 25th Amendment, Pendleton Act, or Hatch Act. Mix templates with your ideas—AI hints guide if needed!</p>
+
+    <div id="wizard" class="step">
+        <label>Step 1: Pick a Law/Amendment <span class="tooltip">ℹ️<span class="tooltiptext">Hover for quick facts!</span></span></label>
+        <select id="topic">
+            <option value="">Choose...</option>
+            <option value="22nd" data-tip="Limits presidents to 2 terms (ratified 1951) to prevent long-term power grabs.">22nd Amendment</option>
+            <option value="25th" data-tip="Handles presidential disability/succession (ratified 1967), e.g., VP steps in if prez cant serve.">25th Amendment</option>
+            <option value="pendleton" data-tip="1883 Civil Service Reform Act: Merit-based hiring for fed jobs, ends spoils system.">Pendleton Act</option>
+            <option value="hatch" data-tip="1939 Act: Bans fed employees from political campaigning on the job to stay neutral.">Hatch Act</option>
+        </select>
+
+        <label>Step 2: Choose Format (for your style!)</label>
+        <div>
+            <input type="radio" id="para" name="format" value="paragraph" checked><label for="para">Short Paragraph <span class="format-desc">(Quick & structured—great for beginners)</span></label><br>
+            <input type="radio" id="skit" name="format" value="skit"><label for="skit">Skit Dialogue <span class="format-desc">(Conversational—role-play ideas)</span></label><br>
+            <input type="radio" id="comic" name="format" value="comic"><label for="comic">Comic Strip Outline <span class="format-desc">(Visual—add drawings later!)</span></label>
+        </div>
+
+        <label>Step 3: Your Idea (optional—mixes in!)</label>
+        <textarea id="userInput" placeholder="E.g., The president gets sick during a crisis... or leave blank for random." rows="3"></textarea>
+        <small><em>💡 Tap mic on mobile for voice input.</em></small>
+
+        <button id="hintBtn" onclick="getAIHint()" style="background: #28a745; margin: 10px 0;">🤖 Get AI Hint/Example (Optional)</button>
+        <div id="hint"></div>
+
+        <button onclick="generateStarter()">Get Starter Scenario</button>
+        <div id="starter"></div>
+    </div>
+
+    <div id="builder" class="step" style="display: none;">
+        <label>Step 4: Refine (add your twist!)</label>
+        <textarea id="refineInput" placeholder="What happens next? Why does the law apply? (E.g., Add a funny protest or Explain the VPs role)" rows="4"></textarea>
+        <button onclick="refineScenario()">Polish & Finalize</button>
+    </div>
+
+    <div id="output" class="step" style="display: none;"></div>
+    <button id="exportBtn" onclick="exportScenario()" style="display: none; width: auto;">📋 Copy to Share/Perform</button>
+
+    <script>
+        // Dynamic script load for AI
+        let generator = null;
+        function loadTransformers() {
+            return new Promise((resolve) => {
+                if (generator) return resolve(true);
+                const script = document.createElement("script");
+                script.src = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+                script.onload = async () => {
+                    try {
+                        generator = await Transformers.pipeline("text-generation", "Xenova/distilgpt2");
+                        resolve(true);
+                    } catch (e) {
+                        resolve(false);
+                    }
+                };
+                script.onerror = () => resolve(false);
+                document.head.appendChild(script);
+            });
+        }
+
+        const templates = {
+            "22nd": {
+                "paragraph": ["President {name} announces a third-term run, ignoring term limits. Supporters rally, but the Supreme Court cites the 22nd Amendment, forcing a new candidate. Chaos ensues as democracy holds firm! Your twist: {user}."],
+                "skit": ["President {name}: \"I am running again—America needs me!\" Advisor: \"Sir, the 22nd Amendment says no after two terms!\" {name}: \"Nonsense!\" [Crowd boos] Court: \"Case dismissed—term limits enforced.\" End scene. Your line: {user}"],
+                "comic": ["Panel 1: {name} on podium, \"Third term!\" 😎 Panel 2: Advisor whispers, \"22nd Amendment blocks it\" ⚠️ Panel 3: Judges rule thumbs down 👎. Your panel: {user}"]
+            },
+            "25th": {
+                "paragraph": ["During a crisis, President {name} falls ill and can not decide. The VP invokes the 25th Amendment, stepping in with cabinet approval. Leadership continues smoothly. Your addition: {user}."],
+                "skit": ["{name}: \"I can not focus.\" VP: \"We must use the 25th—Section 4 for disability.\" Cabinet: \"Agreed!\" [VP takes oath] {name}: \"Thanks, buddy.\" Your dialogue: {user}"],
+                "comic": ["Panel 1: {name} dizzy in Oval Office 😵 Panel 2: VP & cabinet vote \"25th invoke!\" 📜 Panel 3: VP at desk, thumbs up 👍. Your panel: {user}"]
+            },
+            "pendleton": {
+                "paragraph": ["Fed boss {name} hires a buddy over qualified applicants, sparking outrage. The Pendleton Act demands merit-based picks, so an investigation restores fairness. Your story: {user}."],
+                "skit": ["Boss {name}: \"You are hired—family first!\" Employee: \"That breaks Pendleton Act—merit only!\" Inspector: \"Audit time!\" {name}: \"Oops.\" Resolution: Fair hires. Your bit: {user}"],
+                "comic": ["Panel 1: {name} shakes hands with pal 😏 Panel 2: \"Pendleton violation!\" 🚨 Panel 3: Merit test passes, high-fives 🎉. Your panel: {user}"]
+            },
+            "hatch": {
+                "paragraph": ["Gov worker {name} campaigns on work time, posting ads. Colleagues report it—Hatch Act bans on-duty politicking, leading to a warning and neutrality training. Your angle: {user}."],
+                "skit": ["{name}: \"Vote for my candidate—right from my desk!\" Colleague: \"Hatch Act says no politics at work!\" HR: \"Suspended for neutrality breach.\" {name}: \"Lesson learned.\" Your line: {user}"],
+                "comic": ["Panel 1: {name} typing rally post 💻 Panel 2: \"Hatch Act alert!\" 📢 Panel 3: Training session, lightbulb 💡. Your panel: {user}"]
+            }
+        };
+        const names = ["Alex Rivera", "Jordan Lee", "Taylor Kim", "Casey Patel", "Morgan Quinn"];
+        const explanations = {
+            "22nd": "The 22nd Amendment limits presidents to two terms to prevent power grabs, ensuring turnover.",
+            "25th": "The 25th Amendment handles presidential inability, allowing VP/cabinet to act for stability.",
+            "pendleton": "Pendleton Act mandates merit hiring in civil service to end corruption and favoritism.",
+            "hatch": "Hatch Act restricts federal workers political activities on duty for government neutrality."
+        };
+
+        let currentTopic = "", currentFormat = "paragraph", currentScenario = "";
+
+        document.addEventListener("DOMContentLoaded", function() {
+            document.querySelectorAll("[data-tip]").forEach(function(el) {
+                el.innerHTML += "<span class=\"tooltiptext\">" + el.dataset.tip + "</span>";
+            });
+        });
+
+        document.querySelectorAll("input[name=\"format\"]").forEach(function(radio) {
+            radio.addEventListener("change", function(e) {
+                const input = document.getElementById("userInput");
+                if (e.target.value === "comic") input.placeholder = "E.g., Panel 1: The prez collapses...";
+                else if (e.target.value === "skit") input.placeholder = "E.g., President: I feel dizzy... VP: We need to invoke...";
+                else input.placeholder = "E.g., The president gets sick during a crisis...";
+            });
+        });
+
+        async function getAIHint() {
+            const hintDiv = document.getElementById("hint");
+            const btn = document.getElementById("hintBtn");
+            btn.disabled = true;
+            btn.textContent = "Loading AI Hint...";
+            hintDiv.innerHTML = "<div class=\"loading\">🤖 Fetching guidance (first time ~20s)...</div>";
+
+            const aiLoaded = await loadTransformers();
+            currentTopic = document.getElementById("topic").value || "22nd"; // Default if none
+            const userIdea = document.getElementById("userInput").value || "";
+            const format = document.querySelector("input[name=\"format\"]:checked").value || "paragraph";
+
+            try {
+                if (aiLoaded && generator) {
+                    const prompt = `Give a short example scenario for the ${currentTopic === "22nd" ? "22nd Amendment" : currentTopic === "25th" ? "25th Amendment" : currentTopic.toUpperCase() + " Act"} in ${format} format. Start with: "${userIdea}". Keep it realistic, creative, and under 100 words. End with why the law applies.`;
+                    const output = await generator(prompt, { max_new_tokens: 50, temperature: 0.8, do_sample: true });
+                    const hintText = output[0].generated_text.replace(prompt, "").trim();
+                    hintDiv.innerHTML = "<div class=\"ai-hint\"><strong>AI Guidance Example:</strong><br>" + hintText + "</div>";
+                    console.log("✅ AI hint generated!");
+                } else {
+                    // Fallback hint from templates
+                    const name = names[Math.floor(Math.random() * names.length)];
+                    const fallback = templates[currentTopic][format][0].replace("{name}", name).replace("{user}", userIdea ? "Incorporating: " + userIdea + ". " : "");
+                    hintDiv.innerHTML = "<div class=\"randomizer\"><strong>Quick Hint Example:</strong><br>" + fallback.substring(0, 150) + "... (Edit to fit!)</div>";
+                }
+            } catch (err) {
+                console.error("AI hint error:", err);
+                hintDiv.innerHTML = "<div class=\"error\">AI hint unavailable—use the starter below. Tip: For 22nd, try a prez eyeing term 3!</div>";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "🤖 Get AI Hint/Example (Optional)";
+            }
+        }
+
+        function generateStarter() {
+            currentTopic = document.getElementById("topic").value;
+            currentFormat = document.querySelector("input[name=\"format\"]:checked").value;
+            if (!currentTopic) return alert("Pick a law first!");
+
+            const userIdea = document.getElementById("userInput").value || "";
+            const name = names[Math.floor(Math.random() * names.length)];
+            const template = templates[currentTopic][currentFormat][0];
+            currentScenario = template.replace("{name}", name).replace("{user}", userIdea ? "Incorporating: " + userIdea + ". " : "");
+
+            document.getElementById("starter").innerHTML = "<div class=\"randomizer\"><strong>Generated Starter:</strong><br>" + currentScenario + "</div>";
+            document.getElementById("wizard").style.display = "none";
+            document.getElementById("builder").style.display = "block";
+        }
+
+        function refineScenario() {
+            const refine = document.getElementById("refineInput").value;
+            if (!refine) return alert("Add your idea to refine!");
+
+            currentScenario += "\n\nYour Creative Twist: " + refine + "\n\n**Why It Applies:** " + explanations[currentTopic];
+
+            document.getElementById("output").innerHTML = "<strong>Your Final Scenario:</strong><br>" + currentScenario;
+            document.getElementById("builder").style.display = "none";
+            document.getElementById("output").style.display = "block";
+            document.getElementById("exportBtn").style.display = "inline-block";
+        }
+
+        function exportScenario() {
+            navigator.clipboard.writeText(currentScenario).then(function() { alert("Copied! Paste for class skit, print for comic, or share."); });
+        }
+    </script>
+</body>
+</html>
